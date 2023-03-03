@@ -177,6 +177,12 @@ def filter_no_caption_or_no_image(sample):
     return has_caption and has_image
 
 
+def filter_no_pretokenized_caption_or_no_image(sample):
+    has_caption = ('pretok' in sample)
+    has_image = ('png' in sample or 'jpg' in sample or 'jpeg' in sample or 'webp' in sample)
+    return has_caption and has_image
+
+
 def log_and_continue(exn):
     """Call in an exception handler to ignore any exception, issue a warning, and continue."""
     logging.warning(f'Handling webdataset error ({repr(exn)}). Ignoring.')
@@ -341,7 +347,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             num_samples = args.val_num_samples or 0  # eval will just exhaust the iterator if not specified
 
     shared_epoch = SharedEpoch(epoch=epoch)  # create a shared epoch store to sync epoch to dataloader worker proc
-    
+
     if resampled:
         pipeline = [ResampledShards2(input_shards, weights=args.train_data_upsampling_factors, deterministic=True, epoch=shared_epoch)]
     else:
@@ -375,11 +381,68 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             # at this point, we have an iterator over the shards assigned to each worker
             wds.tarfile_to_samples(handler=log_and_continue),
         ])
+
+    if not args.pretokenized and tokenizer is None:
+        raise RuntimeError(
+            "No tokenizer given, and --pretokenized flag not set."
+        )
+    if args.pretokenized and tokenizer is not None:
+        raise RuntimeError(
+            "Cannot use a tokenizer if you're passing in pretokenized data with the --pretokenized flag."
+        )
+
+    if not args.pretokenized:
+        pipeline.extend([
+            wds.select(filter_no_caption_or_no_image),
+            wds.decode("pilrgb", handler=log_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", text="txt"),
+            wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0])
+        ])
+    # if we're expecting pretokenized data, we need to filter out the samples that don't have it
+    elif args.pretokenized and tokenizer is None:
+        pipeline.extend([
+            wds.select(filter_no_pretokenized_caption_or_no_image),
+            wds.decode("pilrgb", handler=log_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", text="pretok", raw_text="txt"),
+            wds.map_dict(
+                image=preprocess_img,
+                text=lambda p: torch.tensor(
+                    p.split(","),
+                    dtype=torch.int64
+                )
+            )
+        ])
+
+        if args.random_range is not None:
+            def random_subsample(tokens):
+                BOS_token = tokens[0]
+                EOS_token = tokens[-1]
+                tokens = tokens[1:-1]
+                n_to_sample = args.random_range - 2
+                # if length is less than n_to_sample,
+                # zero-pad it to length of n_to_sample
+                if tokens.shape[0] < n_to_sample:
+                    tokens = torch.cat(
+                        [tokens, torch.zeros(n_to_sample - tokens.shape[0], dtype=torch.int64)],
+                        dtype=torch.int64
+                    )
+                    return tokens
+                else:
+                    end = min(tokens.shape[0], start + n_to_sample)
+                    start = torch.randint(0, tokens.shape[0] - n_to_sample)
+                    subsample = torch.cat(
+                        [BOS_token, tokens[start:end], EOS_token],
+                        dtype=torch.int64
+                    )
+                    return subsample
+
+            pipeline.extend([
+                wds.map_dict(
+                    text=random_subsample
+                )
+            ])
+
     pipeline.extend([
-        wds.select(filter_no_caption_or_no_image),
-        wds.decode("pilrgb", handler=log_and_continue),
-        wds.rename(image="jpg;png;jpeg;webp", text="txt"),
-        wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
         wds.to_tuple("image", "text"),
         wds.batched(args.batch_size, partial=not is_train)
     ])
@@ -522,7 +585,7 @@ def get_dataset_fn(data_path, dataset_type):
                 f"Tried to figure out dataset type, but failed for extension {ext}.")
     else:
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
-    
+
 
 def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
     preprocess_train, preprocess_val = preprocess_fns

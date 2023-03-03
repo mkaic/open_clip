@@ -382,16 +382,16 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             wds.tarfile_to_samples(handler=log_and_continue),
         ])
 
-    if not args.pretokenized and tokenizer is None:
+    if args.pretokenized_file_suffix is None and tokenizer is None:
         raise RuntimeError(
-            "No tokenizer given, and --pretokenized flag not set."
+            "No tokenizer given, and --pretokenized_file_suffix flag not set."
         )
-    if args.pretokenized and tokenizer is not None:
+    if args.pretokenized_file_suffix is not None and tokenizer is not None:
         raise RuntimeError(
-            "Cannot use a tokenizer if you're passing in pretokenized data with the --pretokenized flag."
+            "Cannot use a tokenizer if you're passing in pretokenized data with the --pretokenized_file_suffix flag."
         )
 
-    if not args.pretokenized:
+    if args.pretokenized_file_suffix is None and tokenizer is not None:
         pipeline.extend([
             wds.select(filter_no_caption_or_no_image),
             wds.decode("pilrgb", handler=log_and_continue),
@@ -399,11 +399,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0])
         ])
     # if we're expecting pretokenized data, we need to filter out the samples that don't have it
-    elif args.pretokenized and tokenizer is None:
-        if args.pretokenized_file_suffix is None:
-            raise RuntimeError(
-                "If you're passing in pretokenized data with the --pretokenized flag, you must also pass in the file suffix of the pretokenized data with the --pretokenized-file-suffix flag."
-            )
+    elif args.pretokenized_file_suffix is not None and tokenizer is None:
         pipeline.extend([
             wds.decode("pilrgb", handler=log_and_continue),
             wds.rename(image="jpg;png;jpeg;webp", text=args.pretokenized_file_suffix, raw_text="txt"),
@@ -417,36 +413,46 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             )
         ])
 
-        if args.random_token_range is not None:
-            def random_subsample_and_dropout(tokens):
-                BOS_token = tokens[0]
-                EOS_token = tokens[-1]
-                n_to_sample = args.random_token_range - 2
-                # if length is less than n_to_sample,
-                # zero-pad it to length of n_to_sample
-                if tokens.shape[0] < n_to_sample:
-                    tokens = torch.cat(
-                        [tokens, torch.zeros(n_to_sample - tokens.shape[0], dtype=torch.int64)],
-                        dtype=torch.int64
-                    )
-                else:
-                    tokens = tokens[1:-1]
-                    end = min(tokens.shape[0], start + n_to_sample)
-                    start = torch.randint(0, tokens.shape[0] - n_to_sample)
-                    tokens = torch.cat(
-                        [BOS_token, tokens[start:end], EOS_token],
-                        dtype=torch.int64
-                    )
-                if args.random_token_dropout is not None:
-                    mask = tokens[torch.rand(tokens.shape[0]) < args.random_token_dropout]
-                    tokens = torch.where(mask, 0, tokens)
-                return tokens
-
-            pipeline.extend([
-                wds.map_dict(
-                    text=random_subsample
+    # Optionally, take only a sliding window view of a certain size
+    # of the tokenized data
+    if args.random_token_range is not None:
+        def random_token_range(tokens):
+            # If tokens come pre-padded, remove padding before random subsampling
+            # The EOS token is always the token with the largest id.
+            tokens = tokens[:torch.argmax(tokens) + 1]
+            BOS_token = tokens[0]
+            EOS_token = tokens[-1]
+            n_to_sample = args.random_token_range - 2
+            # if length is less than n_to_sample,
+            # zero-pad it to length of n_to_sample and return
+            if tokens.shape[0] < n_to_sample:
+                tokens = torch.cat(
+                    [tokens, torch.zeros(n_to_sample - tokens.shape[0], dtype=torch.int64)],
+                    dtype=torch.int64
                 )
-            ])
+            else:
+                tokens = tokens[1:-1]
+                end = min(tokens.shape[0], start + n_to_sample)
+                start = torch.randint(0, tokens.shape[0] - n_to_sample)
+                tokens = torch.cat(
+                    [BOS_token, tokens[start:end], EOS_token],
+                    dtype=torch.int64
+                )
+            return tokens
+
+        pipeline.extend([
+            wds.map_dict(
+                text=random_token_range
+            )
+        ])
+
+    # Optionally, randomly drop tokens from the tokenized data with a certain probability
+    if args.random_token_dropout is not None:
+        def random_token_dropout(tokens):
+            mask = tokens[torch.rand(tokens.shape[0]) < args.random_token_dropout]
+            tokens = torch.where(mask, 0, tokens)
+            return tokens
+        pipeline.extend([wds.map_dict(text=random_token_dropout)])
 
     pipeline.extend([
         wds.to_tuple("image", "text"),

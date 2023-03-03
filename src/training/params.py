@@ -425,12 +425,6 @@ def parse_args(args):
         help='Which pre-trained weights to distill from, if any.'
     )
     parser.add_argument(
-        "--pretokenized",
-        default=False,
-        help="If true, dataset should contain lists of token IDs instead of strings.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--pretokenized_file_suffix",
         default=None,
         help="the file suffix to look for when loading pretokenized text token IDs."

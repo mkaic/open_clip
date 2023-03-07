@@ -171,16 +171,16 @@ def count_samples(dataloader):
     return n_elements, n_batches
 
 
-def filter_no_caption_or_no_image(sample):
-    has_caption = ('txt' in sample)
-    has_image = ('png' in sample or 'jpg' in sample or 'jpeg' in sample or 'webp' in sample)
-    return has_caption and has_image
+# def filter_no_caption_or_no_video(sample):
+#     has_caption = ('txt' in sample)
+#     has_image = ('avi' in sample or 'jpg' in sample or 'jpeg' in sample or 'webp' in sample)
+#     return has_caption and has_image
 
 
-def filter_no_pretokenized_caption_or_no_image(sample):
-    has_caption = ('pretok' in sample)
-    has_image = ('png' in sample or 'jpg' in sample or 'jpeg' in sample or 'webp' in sample)
-    return has_caption and has_image
+# def filter_no_pretokenized_caption_or_no_image(sample):
+#     has_caption = ('pretok' in sample)
+#     has_image = ('png' in sample or 'jpg' in sample or 'jpeg' in sample or 'webp' in sample)
+#     return has_caption and has_image
 
 
 def log_and_continue(exn):
@@ -391,19 +391,25 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             "Cannot use a tokenizer if you're passing in pretokenized data with the --pretokenized_file_suffix flag."
         )
 
+    def random_frame(video, is_train=is_train):
+        # wds.torch_video returns (video, audio), we only need video
+        video = video[0]
+        # video is shape (frames, height, width, channels)
+        # output is shape (height, width, channels)
+        return video[torch.randint(len(video))] if is_train else video[0]
     if args.pretokenized_file_suffix is None and tokenizer is not None:
         pipeline.extend([
-            wds.select(filter_no_caption_or_no_image),
-            wds.decode("pilrgb", handler=log_and_continue),
-            wds.rename(image="jpg;png;jpeg;webp", text="txt"),
+            wds.decode(wds.torch_video, handler=log_and_continue),
+            wds.rename(image="video.avi", text="raw.txt"),
+            wds.map_dict(image=random_frame),
             wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0])
         ])
     # if we're expecting pretokenized data, we need to filter out the samples that don't have it
     elif args.pretokenized_file_suffix is not None and tokenizer is None:
         pipeline.extend([
-            wds.decode("pilrgb", handler=log_and_continue),
-            wds.rename(image="jpg;png;jpeg;webp", text=args.pretokenized_file_suffix, raw_text="txt"),
-            wds.select(filter_no_pretokenized_caption_or_no_image),
+            wds.decode(wds.torch_video, handler=log_and_continue),
+            wds.rename(image="video.avi", text=args.pretokenized_file_suffix),
+            wds.map_dict(image=random_frame),
             wds.map_dict(
                 image=preprocess_img,
                 text=lambda p: torch.tensor(
@@ -447,7 +453,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         ])
 
     # Optionally, randomly drop tokens from the tokenized data with a certain probability
-    if args.random_token_dropout is not None:
+    if args.random_token_dropout is not None and is_train:
         def random_token_dropout(tokens):
             mask = tokens[torch.rand(tokens.shape[0]) < args.random_token_dropout]
             tokens = torch.where(mask, 0, tokens)

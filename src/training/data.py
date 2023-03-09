@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision.datasets as datasets
+from torchvision.transforms.functional import to_pil_image
 import webdataset as wds
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler, IterableDataset, get_worker_info
@@ -396,11 +397,18 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         video = video[0]
         # video is shape (frames, height, width, channels)
         # output is shape (height, width, channels)
-        return video[torch.randint(len(video))] if is_train else video[0]
+        if is_train:
+            frame = video[np.random.randint(0, len(video))]
+        else:
+            frame = video[0]
+        frame = torch.permute(frame, (2, 0, 1))
+        frame = to_pil_image(frame)
+        return frame
+
     if args.pretokenized_file_suffix is None and tokenizer is not None:
         pipeline.extend([
             wds.decode(wds.torch_video, handler=log_and_continue),
-            wds.rename(image="video.avi", text="raw.txt"),
+            wds.rename(image="avi", text="raw.txt"),
             wds.map_dict(image=random_frame),
             wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0])
         ])
@@ -408,7 +416,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
     elif args.pretokenized_file_suffix is not None and tokenizer is None:
         pipeline.extend([
             wds.decode(wds.torch_video, handler=log_and_continue),
-            wds.rename(image="video.avi", text=args.pretokenized_file_suffix),
+            wds.rename(image="avi", text=args.pretokenized_file_suffix),
             wds.map_dict(image=random_frame),
             wds.map_dict(
                 image=preprocess_img,
@@ -439,7 +447,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             else:
                 tokens = tokens[1:-1]
                 end = min(tokens.shape[0], start + n_to_sample)
-                start = torch.randint(0, tokens.shape[0] - n_to_sample)
+                start = np.random.randint.randint(0, tokens.shape[0] - n_to_sample)
                 tokens = torch.cat(
                     [BOS_token, tokens[start:end], EOS_token],
                     dtype=torch.int64

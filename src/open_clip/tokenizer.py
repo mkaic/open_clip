@@ -88,7 +88,7 @@ class SimpleTokenizer(object):
         self.encoder = dict(zip(vocab, range(len(vocab))))
         self.decoder = {v: k for k, v in self.encoder.items()}
         self.bpe_ranks = dict(zip(merges, range(len(merges))))
-        self.cache = {t:t for t in special_tokens}
+        self.cache = {t: t for t in special_tokens}
         special = "|".join(special_tokens)
         self.pat = re.compile(special + r"""|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+""", re.IGNORECASE)
 
@@ -98,14 +98,14 @@ class SimpleTokenizer(object):
     def bpe(self, token):
         if token in self.cache:
             return self.cache[token]
-        word = tuple(token[:-1]) + ( token[-1] + '</w>',)
+        word = tuple(token[:-1]) + (token[-1] + '</w>',)
         pairs = get_pairs(word)
 
         if not pairs:
             return token+'</w>'
 
         while True:
-            bigram = min(pairs, key = lambda pair: self.bpe_ranks.get(pair, float('inf')))
+            bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float('inf')))
             if bigram not in self.bpe_ranks:
                 break
             first, second = bigram
@@ -152,9 +152,11 @@ class SimpleTokenizer(object):
 
 _tokenizer = SimpleTokenizer()
 
+
 def decode(output_ids: torch.Tensor):
     output_ids = output_ids.cpu().numpy()
     return _tokenizer.decode(output_ids)
+
 
 def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.LongTensor:
     """
@@ -177,8 +179,11 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.Lo
     sot_token = _tokenizer.encoder["<start_of_text>"]
     eot_token = _tokenizer.encoder["<end_of_text>"]
     all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
-    result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
 
+    if context_length is None:
+        return torch.tensor(all_tokens, dtype=torch.long)
+
+    result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
     for i, tokens in enumerate(all_tokens):
         if len(tokens) > context_length:
             tokens = tokens[:context_length]  # Truncate

@@ -421,7 +421,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             wds.map_dict(
                 image=preprocess_img,
                 text=lambda p: torch.tensor(
-                    p.split(","),
+                    [int(t) for t in p.split(",")],
                     dtype=torch.int64
                 )
             )
@@ -434,23 +434,29 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             # If tokens come pre-padded, remove padding before random subsampling
             # The EOS token is always the token with the largest id.
             tokens = tokens[:torch.argmax(tokens) + 1]
-            BOS_token = tokens[0]
-            EOS_token = tokens[-1]
-            n_to_sample = args.random_token_range - 2
+            BOS_token = tokens[0].unsqueeze(0)
+            EOS_token = tokens[-1].unsqueeze(0)
+
+            n_to_sample = args.random_token_range
+
             # if length is less than n_to_sample,
             # zero-pad it to length of n_to_sample and return
             if tokens.shape[0] < n_to_sample:
+                padding = torch.zeros(n_to_sample - tokens.shape[0], dtype=torch.int64)
                 tokens = torch.cat(
-                    [tokens, torch.zeros(n_to_sample - tokens.shape[0], dtype=torch.int64)],
-                    dtype=torch.int64
+                    (tokens, padding),
+                    dim=0,
                 )
-            else:
+            elif tokens.shape[0] == n_to_sample:
+                return tokens
+            elif tokens.shape[0] > n_to_sample:
                 tokens = tokens[1:-1]
+                n_to_sample = n_to_sample - 2
+                start = np.random.randint(0, tokens.shape[0] - n_to_sample)
                 end = min(tokens.shape[0], start + n_to_sample)
-                start = np.random.randint.randint(0, tokens.shape[0] - n_to_sample)
                 tokens = torch.cat(
-                    [BOS_token, tokens[start:end], EOS_token],
-                    dtype=torch.int64
+                    (BOS_token, tokens[start:end], EOS_token),
+                    dim=0,
                 )
             return tokens
 
@@ -461,12 +467,12 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         ])
 
     # Optionally, randomly drop tokens from the tokenized data with a certain probability
-    if args.random_token_dropout is not None and is_train:
-        def random_token_dropout(tokens):
-            mask = tokens[torch.rand(tokens.shape[0]) < args.random_token_dropout]
+    if args.token_dropout_rate is not None and is_train:
+        def token_dropout_rate(tokens):
+            mask = tokens[torch.rand_like(tokens) < args.token_dropout_rate]
             tokens = torch.where(mask, 0, tokens)
             return tokens
-        pipeline.extend([wds.map_dict(text=random_token_dropout)])
+        pipeline.extend([wds.map_dict(text=token_dropout_rate)])
 
     pipeline.extend([
         wds.to_tuple("image", "text"),

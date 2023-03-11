@@ -337,7 +337,7 @@ def main(args):
     data = get_data(args,
                     (preprocess_train, preprocess_val),
                     epoch=start_epoch,
-                    tokenizer=get_tokenizer(args.model) if not args.pretokenized else None)
+                    tokenizer=get_tokenizer(args.model) if not args.pretokenized_file_suffix else None)
     assert len(data), 'At least one train or eval dataset must be specified.'
 
     # create scheduler if train

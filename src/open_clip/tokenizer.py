@@ -181,7 +181,7 @@ def tokenize(texts: Union[str, List[str]], context_length: int = 77) -> torch.Lo
     all_tokens = [[sot_token] + _tokenizer.encode(text) + [eot_token] for text in texts]
 
     if context_length is None:
-        return torch.tensor(all_tokens, dtype=torch.long)
+        return [torch.tensor(a, dtype=torch.long) for a in all_tokens]
 
     result = torch.zeros(len(all_tokens), context_length, dtype=torch.long)
     for i, tokens in enumerate(all_tokens):

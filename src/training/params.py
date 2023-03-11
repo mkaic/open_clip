@@ -425,17 +425,20 @@ def parse_args(args):
         help='Which pre-trained weights to distill from, if any.'
     )
     parser.add_argument(
-        "--pretokenized_file_suffix",
+        "--pretokenized-file-suffix",
+        type=str,
         default=None,
         help="the file suffix to look for when loading pretokenized text token IDs."
     )
     parser.add_argument(
-        "--random_token_range",
+        "--random-token-range",
+        type=int,
         default=77,
         help="When using pretokenized text, randomly move a 'sliding window' around the text to get different token ranges."
     )
     parser.add_argument(
-        "--token_dropout_rate",
+        "--token-dropout-rate",
+        type=float,
         default=None,
         help="If not None, randomly drop tokens with this probability."
     )

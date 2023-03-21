@@ -9,6 +9,7 @@ import time
 import braceexpand
 from dataclasses import dataclass
 from multiprocessing import Value
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -412,7 +413,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             wds.map_dict(image=random_frame),
             wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0])
         ])
-    # if we're expecting pretokenized data, we need to filter out the samples that don't have it
+        
+    # if we're expecting pretokenized data, we read in the data as a comma-separated list of ints
     elif args.pretokenized_file_suffix is not None and tokenizer is None:
         pipeline.extend([
             wds.decode(wds.torch_video, handler=log_and_continue),
@@ -452,13 +454,24 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             elif tokens.shape[0] > n_to_sample:
                 tokens = tokens[1:-1]
                 n_to_sample = n_to_sample - 2
-                start = np.random.randint(0, tokens.shape[0] - n_to_sample)
+                if is_train:
+                    # if we're training, we want to select a different random subset of tokens
+                    # every time we see a given example.
+                    rng = np.random.default_rng()
+                else:
+                    # if this is validation or testing, we still select a random subset,
+                    # but we ensure it is the same random subset every time we see the example
+                    seed = int(hashlib.sha256(str(tokens).encode('utf-8')).hexdigest(), 16) % 10**8
+                    rng = np.random.default_rng(seed)
+                    
+                start = rng.integers(low=0, high=tokens.shape[0] - n_to_sample)
                 end = min(tokens.shape[0], start + n_to_sample)
                 tokens = torch.cat(
                     (BOS_token, tokens[start:end], EOS_token),
                     dim=0,
                 )
             return tokens
+            
 
         pipeline.extend([
             wds.map_dict(

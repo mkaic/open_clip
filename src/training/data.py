@@ -488,9 +488,13 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         pipeline.extend([wds.map_dict(text=token_dropout_rate)])
 
     pipeline.extend([
-        wds.to_tuple("image", "text"),
+        wds.to_tuple("image", "text") if not args.return_file_uids else wds.to_tuple("image", "text", "__key__")
+        ])
+    
+    pipeline.extend([
         wds.batched(args.batch_size, partial=not is_train)
-    ])
+        ])
+    
 
     dataset = wds.DataPipeline(*pipeline)
 

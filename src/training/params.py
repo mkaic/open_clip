@@ -442,6 +442,13 @@ def parse_args(args):
         default=None,
         help="If not None, randomly drop tokens with this probability."
     )
+    parser.add_argument(
+        "--return-file-uids",
+        action='store_true',
+        default=False,
+        help="If true, dataset returns file_uids in addition to the data."
+    )
+        
     args = parser.parse_args(args)
 
     # If some params are not passed, we use the default values based on model name.

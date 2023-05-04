@@ -487,7 +487,10 @@ def get_wds_dataset(
                 wds.rename(image="avi", text="raw.txt"),
                 wds.select(
                     lambda sample: (args.return_n_frames == 1)
-                    or (len(sample["image"]) > args.return_n_frames * args.frame_stride)
+                    or (
+                        len(sample["image"][0])
+                        > args.return_n_frames * args.frame_stride
+                    )
                 ),
                 wds.map_dict(image=random_frame),
                 wds.map_dict(
@@ -505,7 +508,10 @@ def get_wds_dataset(
                 wds.rename(image="avi", text=args.pretokenized_file_suffix),
                 wds.select(
                     lambda sample: (args.return_n_frames == 1)
-                    or (len(sample["image"]) > args.return_n_frames * args.frame_stride)
+                    or (
+                        len(sample["image"][0])
+                        > args.return_n_frames * args.frame_stride
+                    )
                 ),
                 wds.map_dict(image=random_frame),
                 wds.map_dict(

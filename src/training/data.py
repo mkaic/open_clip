@@ -480,7 +480,25 @@ def get_wds_dataset(
 
         print("Returning entire video")
 
-    if args.pretokenized_file_suffix is None and tokenizer is not None:
+    if args.videos_only:
+        pipeline.extend(
+            [
+                wds.decode(wds.torch_video, handler=log_and_continue),
+                wds.rename(image="avi"),
+                wds.select(
+                    lambda sample: (args.return_n_frames == 1)
+                    or (
+                        len(sample["image"][0])
+                        > args.return_n_frames * args.frame_stride
+                    )
+                ),
+                wds.map_dict(image=random_frame),
+                wds.map_dict(image=possibly_batched_preprocess_img),
+            ]
+        )
+
+
+    elif args.pretokenized_file_suffix is None and tokenizer is not None:
         pipeline.extend(
             [
                 wds.decode(wds.torch_video, handler=log_and_continue),
@@ -525,7 +543,7 @@ def get_wds_dataset(
 
     # Optionally, take only a sliding window view of a certain size
     # of the tokenized data
-    if args.random_token_range is not None:
+    if args.random_token_range is not None and not args.videos_only:
 
         def random_token_range(tokens):
             # If tokens come pre-padded, remove padding before random subsampling
@@ -573,7 +591,7 @@ def get_wds_dataset(
         pipeline.extend([wds.map_dict(text=random_token_range)])
 
     # Optionally, randomly drop tokens from the tokenized data with a certain probability
-    if args.token_dropout_rate is not None and is_train:
+    if args.token_dropout_rate is not None and is_train and not args.videos_only:
 
         def token_dropout_rate(tokens):
             mask = tokens[torch.rand_like(tokens) < args.token_dropout_rate]
@@ -582,13 +600,21 @@ def get_wds_dataset(
 
         pipeline.extend([wds.map_dict(text=token_dropout_rate)])
 
-    pipeline.extend(
-        [
-            wds.to_tuple("image", "text")
+    if not args.videos_only:
+        pipeline.extend(
+            [
+                wds.to_tuple("image", "text")
+                if not args.return_file_uids
+                else wds.to_tuple("image", "text", "__key__")
+            ]
+        )
+    else:
+        pipeline.extend([
+            wds.to_tuple("image")
             if not args.return_file_uids
-            else wds.to_tuple("image", "text", "__key__")
-        ]
-    )
+            else wds.to_tuple("image", "__key__")
+            ])
+
 
     pipeline.extend([wds.batched(args.batch_size, partial=not is_train)])
 

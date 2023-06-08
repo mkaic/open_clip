@@ -483,6 +483,12 @@ def parse_args(args):
         default=1,
         help="The stride between frames to return. Defaults to 1.",
     )
+    parser.add_argument(
+        "--videos-only",
+        action="store_true",
+        default=False,
+        help="If true, only return videos, not text.",
+    )
     args = parser.parse_args(args)
 
     # If some params are not passed, we use the default values based on model name.

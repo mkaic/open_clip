@@ -460,7 +460,7 @@ def parse_args(args):
         help="When using pretokenized text, randomly move a 'sliding window' around the text to get different token ranges.",
     )
     parser.add_argument(
-        "--do_token-dropout",
+        "--do-token-dropout",
         action="store_true",
         default=False,
         help="If True, text tokens are limited to a 'sliding window' of random length.",

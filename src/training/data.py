@@ -591,14 +591,26 @@ def get_wds_dataset(
         pipeline.extend([wds.map_dict(text=random_token_range)])
 
     # Optionally, randomly drop tokens from the tokenized data with a certain probability
-    if args.token_dropout_rate is not None and is_train and not args.videos_only:
+    if args.do_token_dropout and not args.videos_only and is_train:
+        def token_dropout(tokens):
+            original_len = len(tokens)
+            BOS_token = tokens[0].unsqueeze(0)
+            EOS_token = tokens.max()
 
-        def token_dropout_rate(tokens):
-            mask = tokens[torch.rand_like(tokens) < args.token_dropout_rate]
-            tokens = torch.where(mask, 0, tokens)
+            tokens = [t for t in tokens if t not in [BOS_token, EOS_token, 0]]
+            # Select between 1 and n_tokens to keep.
+            selection_len = np.random.randint(1, len(tokens))
+            selection_start = np.random.randint(0, len(tokens) - selection_len)
+            tokens = tokens[selection_start:]
+            tokens = torch.tensor([BOS_token, *tokens, EOS_token], dtype=torch.int64)
+            padding = torch.zeros(original_len - len(tokens), dtype=torch.int64)
+            tokens = torch.cat(
+                (tokens, padding),
+                dim=0,
+            )
             return tokens
-
-        pipeline.extend([wds.map_dict(text=token_dropout_rate)])
+        
+        pipeline.extend([wds.map_dict(text=token_dropout)])
 
     if not args.videos_only:
         pipeline.extend(

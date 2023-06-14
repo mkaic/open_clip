@@ -594,9 +594,10 @@ def get_wds_dataset(
     if args.do_token_dropout and not args.videos_only and is_train:
         def token_dropout(tokens):
             original_len = len(tokens)
+            if (tokens > 0).sum() <= 3:
+                return tokens
             BOS_token = tokens[0].unsqueeze(0)
             EOS_token = tokens.max()
-
             tokens = [t for t in tokens if t not in [BOS_token, EOS_token, 0]]
             # Select between 1 and n_tokens to keep.
             selection_len = np.random.randint(1, len(tokens))

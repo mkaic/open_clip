@@ -460,10 +460,10 @@ def parse_args(args):
         help="When using pretokenized text, randomly move a 'sliding window' around the text to get different token ranges.",
     )
     parser.add_argument(
-        "--token-dropout-rate",
-        type=float,
-        default=None,
-        help="If not None, randomly drop tokens with this probability.",
+        "--do_token-dropout",
+        action="store_true",
+        default=False,
+        help="If True, text tokens are limited to a 'sliding window' of random length.",
     )
     parser.add_argument(
         "--return-file-uids",
